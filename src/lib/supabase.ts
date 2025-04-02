@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Check for environment variables
 if (!import.meta.env.VITE_SUPABASE_URL) {
@@ -35,7 +35,7 @@ export const supabase = createClient(
 );
 
 // Create a singleton instance for caching
-let instance = null;
+let instance: SupabaseClient | null = null;
 
 export const getSupabaseClient = () => {
   if (instance) return instance;

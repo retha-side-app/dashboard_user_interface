@@ -18,6 +18,9 @@ const Navbar: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { userData, isLoading, isAuthenticated, signOut } = useAuth();
 
+  // Check if user is admin or instructor
+  const isInstructorOrAdmin = userData?.role === 'instructor' || userData?.role === 'admin';
+
   const navLinks: NavLink[] = [
     { path: '/courses', label: 'Courses' },
   ];
@@ -27,9 +30,16 @@ const Navbar: React.FC = () => {
     { path: '/messages', label: 'Messages' },
   ];
 
-  // Combine links based on authentication status
+  // Admin/instructor links
+  const instructorLinks: NavLink[] = [
+    { path: '/consultant-dashboard', label: 'Dashboard' },
+  ];
+
+  // Combine links based on authentication status and role
   const displayLinks = isAuthenticated 
-    ? [...navLinks, ...authenticatedLinks] 
+    ? isInstructorOrAdmin 
+      ? [...navLinks, ...authenticatedLinks, ...instructorLinks]
+      : [...navLinks, ...authenticatedLinks]
     : navLinks;
 
   const handleSignOut = async () => {
@@ -38,13 +48,13 @@ const Navbar: React.FC = () => {
   };
 
   return (
-    <nav style={{ background: 'linear-gradient(to right, #fdfcfa, #f7f2ee)' }} className="border-b border-[#cccccc]">
+    <nav style={{ background: 'linear-gradient(to right, #fdfcfa, #f7f2ee)' }} className="fixed top-0 left-0 right-0 border-b border-[#cccccc] z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 relative">
           <div className="flex items-center">
             <Link to="/" className="flex items-center">
               <Logo />
-              <span className="ml-2 text-xl font-semibold text-primary">Dashboard</span>
+              <span className="ml-2 text-xl font-semibold text-primary">Retha Platform</span>
             </Link>
           </div>
 
