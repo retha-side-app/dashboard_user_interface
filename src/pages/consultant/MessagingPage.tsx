@@ -5,11 +5,13 @@ import { instructorService } from '../../services/instructor/instructorService';
 import { MessagingProvider } from '../../context/MessagingContext';
 import ConversationList from '../../components/messaging/ConversationList';
 import MessageThread from '../../components/messaging/MessageThread';
+import InstructorSidebar from '../../components/consultant/InstructorSidebar';
 
 const MessagingPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isInstructor, setIsInstructor] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -39,23 +41,38 @@ const MessagingPage: React.FC = () => {
   }
 
   return (
-    <MessagingProvider>
-      <div className="container mx-auto p-8">
-        <div className="bg-white/60 backdrop-blur-sm rounded-lg shadow-lg overflow-hidden">
-          <div className="flex h-[calc(100vh-8rem)]">
-            <div className="w-full md:w-1/3 border-r border-gray-200">
-              <ConversationList
-                activeConversationId={activeConversationId}
-                onSelectConversation={id => setActiveConversationId(id)}
-              />
-            </div>
-            <div className="hidden md:block md:w-2/3">
-              <MessageThread conversationId={activeConversationId} />
+    <div className="flex min-h-screen">
+      <InstructorSidebar onCollapse={(collapsed) => setIsSidebarCollapsed(collapsed)} />
+      
+      <div className={`flex-1 transition-all duration-300 ${isSidebarCollapsed ? 'ml-16' : 'ml-64'} p-8`}>
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white/60 backdrop-blur-sm rounded-lg shadow-lg p-6">
+            <h1 className="text-2xl font-bold mb-4">Messages</h1>
+            
+            <div className="h-[calc(80vh-10rem)] min-h-[500px] bg-white rounded-lg shadow overflow-hidden">
+              <MessagingProvider>
+                <div className="flex h-full">
+                  {/* Conversations sidebar */}
+                  <div className="w-1/3 border-r border-gray-200 h-full overflow-y-auto">
+                    <ConversationList 
+                      activeConversationId={activeConversationId}
+                      onSelectConversation={setActiveConversationId}
+                    />
+                  </div>
+                  
+                  {/* Message thread */}
+                  <div className="w-2/3 h-full flex flex-col">
+                    <MessageThread 
+                      conversationId={activeConversationId} 
+                    />
+                  </div>
+                </div>
+              </MessagingProvider>
             </div>
           </div>
         </div>
       </div>
-    </MessagingProvider>
+    </div>
   );
 };
 

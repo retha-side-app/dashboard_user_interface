@@ -51,53 +51,108 @@ export interface InstructorGroup {
   members: GroupMember[];
 }
 
+// Utility function for retrying operations
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries = 3,
+  delay = 1000
+): Promise<T> {
+  let lastError: any;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      console.warn(`Operation failed (attempt ${attempt + 1}/${maxRetries}):`, error);
+      lastError = error;
+      
+      if (attempt < maxRetries - 1) {
+        // Wait with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, attempt)));
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
 export const instructorService = {
   /**
    * Check if the current user is an instructor
    */
   async isInstructor(): Promise<boolean> {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) return false;
+    return withRetry(async () => {
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError) {
+          console.error('Auth error in isInstructor:', authError);
+          return false;
+        }
+        
+        if (!user) return false;
 
-      const { data: userData, error } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single();
 
-      if (error || !userData) return false;
+        if (error) {
+          console.error('Database error in isInstructor:', error);
+          return false;
+        }
 
-      return userData.role === 'instructor';
-    } catch (error) {
-      console.error('Error checking instructor status:', error);
-      return false;
-    }
+        if (!userData) {
+          console.warn('No user data found for ID:', user.id);
+          return false;
+        }
+
+        return userData.role === 'instructor' || userData.role === 'admin';
+      } catch (error) {
+        console.error('Unexpected error checking instructor status:', error);
+        return false;
+      }
+    }, 3, 500);
   },
 
   /**
    * Get instructor profile data
    */
   async getInstructorProfile(): Promise<InstructorUser | null> {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) return null;
+    return withRetry(async () => {
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError) {
+          console.error('Auth error in getInstructorProfile:', authError);
+          return null;
+        }
+        
+        if (!user) return null;
 
-      const { data: userData, error } = await supabase
-        .from('users')
-        .select('id, email, full_name, role')
-        .eq('id', user.id)
-        .single();
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('id, email, full_name, role')
+          .eq('id', user.id)
+          .single();
 
-      if (error || !userData) return null;
+        if (error) {
+          console.error('Database error in getInstructorProfile:', error);
+          return null;
+        }
 
-      return userData as InstructorUser;
-    } catch (error) {
-      console.error('Error fetching instructor profile:', error);
-      return null;
-    }
+        if (!userData) {
+          console.warn('No user data found for instructor ID:', user.id);
+          return null;
+        }
+
+        return userData as InstructorUser;
+      } catch (error) {
+        console.error('Unexpected error fetching instructor profile:', error);
+        return null;
+      }
+    }, 3, 500);
   },
 
   /**

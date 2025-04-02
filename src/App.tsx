@@ -52,6 +52,7 @@ const ConsultantDashboard = lazy(() => import('./pages/consultant/ConsultantDash
 const ConsultantMembersPage = lazy(() => import('./pages/consultant/MembersPage'));
 const ConsultantGroupsPage = lazy(() => import('./pages/consultant/GroupsPage'));
 const ConsultantMessagingPage = lazy(() => import('./pages/consultant/MessagingPage'));
+const ConsultantSettingsPage = lazy(() => import('./pages/consultant/SettingsPage'));
 
 function App() {
   const [user, setUser] = useState<any>(null);
@@ -120,10 +121,30 @@ function App() {
         setAuthInitialized(true);
         setAuthError(new Error("Authentication timed out. Please refresh the page."));
       }
-    }, 10000); // 10 second timeout
+    }, 20000); // 20 second timeout instead of 10
     
-    // Initialize auth
-    initializeAuth();
+    // Initialize auth with retry logic
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    const tryInitAuth = async () => {
+      try {
+        await initializeAuth();
+      } catch (error) {
+        console.error(`Auth initialization failed (attempt ${retryCount + 1}/${maxRetries})`, error);
+        if (retryCount < maxRetries) {
+          retryCount++;
+          // Exponential backoff: 1s, 2s, 4s
+          setTimeout(tryInitAuth, 1000 * Math.pow(2, retryCount - 1));
+        } else {
+          setLoading(false);
+          setAuthInitialized(true);
+          setAuthError(new Error("Authentication failed after multiple attempts. Please refresh the page."));
+        }
+      }
+    };
+    
+    tryInitAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -168,11 +189,19 @@ function App() {
           <Suspense fallback={<Loading />}>
             {authInitialized && (
               <Routes>
-                <Route path="/login" element={!user ? <LoginPage /> : <Navigate to="/" replace />} />
-                <Route path="/signup" element={!user ? <SignupPage /> : <Navigate to="/" replace />} />
+                <Route path="/login" element={!user ? <LoginPage /> : (
+                  isInstructor ? 
+                    <Navigate to="/consultant-dashboard" replace /> : 
+                    <Navigate to="/my-enrollments" replace />
+                )} />
+                <Route path="/signup" element={!user ? <SignupPage /> : (
+                  isInstructor ? 
+                    <Navigate to="/consultant-dashboard" replace /> : 
+                    <Navigate to="/my-enrollments" replace />
+                )} />
                 
                 {/* Student/user routes */}
-                <Route path="/dashboard" element={user ? <UserPage /> : <Navigate to="/login" replace />} />
+                <Route path="/dashboard" element={user ? <Navigate to="/my-enrollments" replace /> : <Navigate to="/login" replace />} />
                 <Route path="/courses" element={<CoursesPage />} />
                 <Route path="/businessclass-demo" element={<DemoCoursesPage />} />
                 <Route path="/businessclass-demo/:id" element={<DemoDetailPage />} />
@@ -189,6 +218,7 @@ function App() {
                 <Route path="/consultant-dashboard/members" element={user && isInstructor ? <ConsultantMembersPage /> : <Navigate to="/" replace />} />
                 <Route path="/consultant-dashboard/groups" element={user && isInstructor ? <ConsultantGroupsPage /> : <Navigate to="/" replace />} />
                 <Route path="/consultant-dashboard/messages" element={user && isInstructor ? <ConsultantMessagingPage /> : <Navigate to="/" replace />} />
+                <Route path="/consultant-dashboard/settings" element={user && isInstructor ? <ConsultantSettingsPage /> : <Navigate to="/" replace />} />
                 
                 {/* Home and fallback routes */}
                 <Route path="/" element={<HomePage />} />
