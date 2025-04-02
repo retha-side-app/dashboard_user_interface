@@ -1,0 +1,855 @@
+﻿"schema_name","function_name","function_language","definition","function_arguments","return_type"
+"public","add_group_members_as_students","plpgsql","CREATE OR REPLACE FUNCTION public.add_group_members_as_students()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    -- Insert new instructor-student relationships for all group members
+    INSERT INTO instructor_students (instructor_id, student_id)
+    SELECT 
+        NEW.instructor_id,
+        gm.user_id
+    FROM group_members gm
+    WHERE gm.group_id = NEW.group_id
+    AND gm.user_id != NEW.instructor_id  -- Don't add instructor as their own student
+    ON CONFLICT (instructor_id, student_id) DO NOTHING;
+    
+    RETURN NEW;
+END;
+$function$
+","","trigger"
+"public","add_group_students_to_instructor","plpgsql","CREATE OR REPLACE FUNCTION public.add_group_students_to_instructor()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    -- Insert new instructor-student relationships
+    INSERT INTO instructor_students (instructor_id, student_id)
+    SELECT 
+        NEW.instructor_id,
+        gm.user_id
+    FROM group_members gm
+    WHERE gm.group_id = NEW.group_id
+    AND gm.user_id != NEW.instructor_id  -- Don't add instructor as their own student
+    -- Avoid duplicate entries
+    ON CONFLICT (instructor_id, student_id) DO NOTHING;
+    
+    RETURN NEW;
+END;
+$function$
+","","trigger"
+"public","admin_create_user","plpgsql","CREATE OR REPLACE FUNCTION public.admin_create_user(email text, password text, full_name text, user_role user_role DEFAULT 'user'::user_role)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    new_user_id uuid;
+BEGIN
+    -- Check if the executing user is an admin
+    IF NOT public.is_admin(auth.uid()) THEN
+        RAISE EXCEPTION 'Only administrators can create new users';
+    END IF;
+
+    -- First create the user in auth.users
+    new_user_id := (
+        SELECT id FROM auth.users
+        WHERE auth.create_user(
+            email := email,
+            password := password,
+            email_confirm := true
+        ) IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+    );
+
+    -- Then insert into public.users
+    INSERT INTO public.users (
+        id,
+        email,
+        full_name,
+        role,
+        created_at,
+        updated_at
+    ) VALUES (
+        new_user_id,
+        email,
+        full_name,
+        user_role,
+        NOW(),
+        NOW()
+    );
+
+    RETURN new_user_id;
+EXCEPTION
+    WHEN OTHERS THEN
+        -- If something goes wrong, attempt to clean up
+        IF new_user_id IS NOT NULL THEN
+            PERFORM auth.delete_user(new_user_id::text);
+        END IF;
+        RAISE;
+END;
+$function$
+","email text, password text, full_name text, user_role user_role DEFAULT 'user'::user_role","uuid"
+"public","auto_publish_newsletters","plpgsql","CREATE OR REPLACE FUNCTION public.auto_publish_newsletters()
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+  UPDATE newsletters
+  SET published = true,
+      status = 'published'
+  WHERE publish_at <= now()
+    AND published = false
+    AND status = 'scheduled';
+END;
+$function$
+","","void"
+"public","award_daily_login_points","plpgsql","CREATE OR REPLACE FUNCTION public.award_daily_login_points(p_user_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+  PERFORM daily_words.award_daily_login_points(p_user_id);
+END;
+$function$
+","p_user_id uuid","void"
+"public","calculate_completed_steps","plpgsql","CREATE OR REPLACE FUNCTION public.calculate_completed_steps(user_id uuid, course_id uuid)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    completed integer;
+BEGIN
+    SELECT COUNT(DISTINCT sc.step_id)
+    INTO completed
+    FROM step_completions sc
+    JOIN course_steps cs ON sc.step_id = cs.id
+    JOIN course_days cd ON cs.day_id = cd.id
+    JOIN course_weeks cw ON cd.week_id = cw.id
+    WHERE sc.user_id = $1
+    AND cw.course_id = $2;
+    
+    RETURN COALESCE(completed, 0);
+END;
+$function$
+","user_id uuid, course_id uuid","int4"
+"public","calculate_total_course_steps","plpgsql","CREATE OR REPLACE FUNCTION public.calculate_total_course_steps(course_id uuid)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    total integer;
+BEGIN
+    SELECT COUNT(cs.id)
+    INTO total
+    FROM course_steps cs
+    JOIN course_days cd ON cs.day_id = cd.id
+    JOIN course_weeks cw ON cd.week_id = cw.id
+    WHERE cw.course_id = $1;
+    
+    RETURN COALESCE(total, 0);
+END;
+$function$
+","course_id uuid","int4"
+"public","check_role_update","plpgsql","CREATE OR REPLACE FUNCTION public.check_role_update()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+    IF public.is_admin(auth.uid()) THEN
+        RETURN NEW;
+    ELSIF OLD.role = NEW.role THEN
+        -- Allow users to update their own data if not changing role
+        RETURN NEW;
+    ELSE
+        RAISE EXCEPTION 'Only admins can change roles';
+    END IF;
+END;
+$function$
+","","trigger"
+"public","create_course_group","plpgsql","CREATE OR REPLACE FUNCTION public.create_course_group(p_course_id uuid, p_name text, p_description text DEFAULT NULL::text)
+ RETURNS course_groups
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_group course_groups;
+BEGIN
+    -- Check if user is admin
+    IF NOT EXISTS (
+        SELECT 1 FROM users
+        WHERE id = auth.uid()
+        AND role = 'admin'
+    ) THEN
+        RAISE EXCEPTION 'Only admins can create groups';
+    END IF;
+
+    -- Create the group
+    INSERT INTO course_groups (course_id, name, description)
+    VALUES (p_course_id, p_name, p_description)
+    RETURNING * INTO v_group;
+
+    RETURN v_group;
+END;
+$function$
+","p_course_id uuid, p_name text, p_description text DEFAULT NULL::text","course_groups"
+"public","delete_course_group","plpgsql","CREATE OR REPLACE FUNCTION public.delete_course_group(p_group_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+    -- Check if user is admin
+    IF NOT EXISTS (
+        SELECT 1 FROM users
+        WHERE id = auth.uid()
+        AND role = 'admin'
+    ) THEN
+        RAISE EXCEPTION 'Only admins can delete groups';
+    END IF;
+
+    -- Delete the group
+    DELETE FROM course_groups WHERE id = p_group_id;
+END;
+$function$
+","p_group_id uuid","void"
+"public","get_all_triggers","plpgsql","CREATE OR REPLACE FUNCTION public.get_all_triggers()
+ RETURNS TABLE(schema_name text, table_name text, trig_name text, trigger_timing text, event_type text, trigger_function text)
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        CAST(t.event_object_schema AS TEXT) AS schema_name,  
+        CAST(t.event_object_table AS TEXT) AS table_name,    
+        CAST(t.trigger_name AS TEXT) AS trig_name,           
+        CAST(t.action_timing AS TEXT) AS trigger_timing,     
+        CAST(t.event_manipulation AS TEXT) AS event_type,    
+        CAST(t.action_statement AS TEXT) AS trigger_function 
+    FROM information_schema.triggers t
+    WHERE t.event_object_schema IN ('public', 'auth');
+END;
+$function$
+","","record"
+"public","get_assessment_with_user_data","sql","CREATE OR REPLACE FUNCTION public.get_assessment_with_user_data(assessment_id uuid)
+ RETURNS json
+ LANGUAGE sql
+ SECURITY DEFINER
+AS $function$
+    SELECT 
+        jsonb_build_object(
+            'id', a.id,
+            'user_id', a.user_id,
+            'created_at', a.created_at,
+            'level', a.level,
+            'scores', a.scores,
+            'feedback', a.feedback,
+            'details', a.details,
+            'strengths', a.strengths,
+            'improvements', a.improvements,
+            'summary', a.summary,
+            'is_anonymous', a.is_anonymous,
+            'share_id', a.share_id,
+            'full_name', u.full_name
+        )
+    FROM 
+        level_test.assessments a
+    LEFT JOIN 
+        public.users u ON a.user_id = u.id
+    WHERE 
+        a.id = assessment_id;
+$function$
+","assessment_id uuid","json"
+"public","get_available_students","plpgsql","CREATE OR REPLACE FUNCTION public.get_available_students(p_instructor_id uuid)
+ RETURNS TABLE(id uuid, full_name text, email text, role text)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        u.id,
+        u.full_name,
+        u.email,
+        u.role
+    FROM users u
+    WHERE u.role = 'student'
+    AND NOT EXISTS (
+        SELECT 1 
+        FROM instructor_students is2
+        WHERE is2.student_id = u.id
+        AND is2.instructor_id = p_instructor_id
+    )
+    ORDER BY u.full_name;
+END;
+$function$
+","p_instructor_id uuid","record"
+"public","get_group_member_details","plpgsql","CREATE OR REPLACE FUNCTION public.get_group_member_details(p_group_id uuid)
+ RETURNS TABLE(id uuid, group_id uuid, user_id uuid, full_name text, email text, role user_role, joined_at timestamp with time zone)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        gm.id,
+        gm.group_id,
+        gm.user_id,
+        u.full_name,
+        u.email,
+        u.role,
+        gm.joined_at
+    FROM group_members gm
+    JOIN users u ON gm.user_id = u.id
+    WHERE gm.group_id = p_group_id
+    ORDER BY u.role, u.full_name;
+END;
+$function$
+","p_group_id uuid","record"
+"public","get_group_members","plpgsql","CREATE OR REPLACE FUNCTION public.get_group_members(p_group_id uuid)
+ RETURNS TABLE(id uuid, user_id uuid, role text, full_name text, email text, joined_at timestamp with time zone)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        gm.id,
+        gm.user_id,
+        gm.role,
+        u.full_name,
+        u.email,
+        gm.joined_at
+    FROM group_members gm
+    JOIN users u ON gm.user_id = u.id
+    WHERE gm.group_id = p_group_id
+    ORDER BY gm.role, u.full_name;
+END;
+$function$
+","p_group_id uuid","record"
+"public","handle_group_membership_changes","plpgsql","CREATE OR REPLACE FUNCTION public.handle_group_membership_changes()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_course_id UUID;
+    v_member_record RECORD;
+    v_instructor_id UUID;
+    v_student_id UUID;
+BEGIN
+    -- Get the course_id for this group
+    SELECT course_id INTO v_course_id
+    FROM course_groups 
+    WHERE id = NEW.group_id;
+    
+    -- For each instructor in the group, add all students to their instructor_students table
+    FOR v_instructor_id IN (
+        SELECT gm.user_id
+        FROM group_members gm
+        JOIN users u ON gm.user_id = u.id
+        WHERE gm.group_id = NEW.group_id
+        AND u.role = 'instructor'
+    ) LOOP
+        -- Add all students to this instructor
+        FOR v_student_id IN (
+            SELECT gm.user_id
+            FROM group_members gm
+            JOIN users u ON gm.user_id = u.id
+            WHERE gm.group_id = NEW.group_id
+            AND u.role = 'student'
+        ) LOOP
+            -- Skip if instructor and student are the same person
+            IF v_instructor_id <> v_student_id THEN
+                INSERT INTO instructor_students
+                    (instructor_id, student_id, course_id)
+                VALUES
+                    (v_instructor_id, v_student_id, v_course_id)
+                ON CONFLICT (instructor_id, student_id, course_id) DO NOTHING;
+            END IF;
+        END LOOP;
+    END LOOP;
+    
+    RETURN NEW;
+END;
+$function$
+","","trigger"
+"public","handle_group_membership_removal","plpgsql","CREATE OR REPLACE FUNCTION public.handle_group_membership_removal()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_course_id UUID;
+BEGIN
+    -- Get the course_id for this group
+    SELECT course_id INTO v_course_id
+    FROM course_groups 
+    WHERE id = OLD.group_id;
+    
+    -- If the removed user was an instructor, remove student relationships for this course
+    IF EXISTS (
+        SELECT 1 FROM users WHERE id = OLD.user_id AND role = 'instructor'
+    ) THEN
+        DELETE FROM instructor_students
+        WHERE instructor_id = OLD.user_id
+        AND course_id = v_course_id
+        AND student_id IN (
+            SELECT gm.user_id
+            FROM group_members gm
+            JOIN users u ON gm.user_id = u.id
+            WHERE gm.group_id = OLD.group_id
+            AND u.role = 'student'
+        );
+    END IF;
+    
+    -- If the removed user was a student, remove instructor relationships for this course
+    IF EXISTS (
+        SELECT 1 FROM users WHERE id = OLD.user_id AND role = 'student'
+    ) THEN
+        DELETE FROM instructor_students
+        WHERE student_id = OLD.user_id
+        AND course_id = v_course_id
+        AND instructor_id IN (
+            SELECT gm.user_id
+            FROM group_members gm
+            JOIN users u ON gm.user_id = u.id
+            WHERE gm.group_id = OLD.group_id
+            AND u.role = 'instructor'
+        );
+    END IF;
+    
+    RETURN OLD;
+END;
+$function$
+","","trigger"
+"public","handle_instructor_group_member","plpgsql","CREATE OR REPLACE FUNCTION public.handle_instructor_group_member()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    v_course_id uuid;
+    v_student_record RECORD;
+BEGIN
+    -- Get the course_id for this group
+    SELECT course_id INTO v_course_id
+    FROM course_groups
+    WHERE id = NEW.group_id;
+
+    -- Check if the new member is an instructor
+    IF EXISTS (
+        SELECT 1 FROM users
+        WHERE id = NEW.user_id
+        AND role = 'instructor'
+    ) THEN
+        -- For each student in the group
+        FOR v_student_record IN
+            SELECT gm.user_id as student_id
+            FROM group_members gm
+            JOIN users u ON u.id = gm.user_id
+            WHERE gm.group_id = NEW.group_id
+            AND u.role = 'student'
+        LOOP
+            -- Create instructor-student pair if it doesn't exist
+            INSERT INTO instructor_students
+                (instructor_id, student_id, course_id)
+            VALUES
+                (NEW.user_id, v_student_record.student_id, v_course_id)
+            ON CONFLICT (instructor_id, student_id, course_id) DO NOTHING;
+        END LOOP;
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+","","trigger"
+"public","handle_new_user","plpgsql","CREATE OR REPLACE FUNCTION public.handle_new_user()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+  INSERT INTO public.users (
+    id, 
+    email, 
+    full_name, 
+    role, 
+    created_at, 
+    updated_at
+  ) VALUES (
+    NEW.id, 
+    NEW.email, 
+    coalesce(NEW.raw_user_meta_data->>'full_name', NEW.email), 
+    'user', 
+    NEW.created_at, 
+    NEW.created_at
+  )
+  ON CONFLICT (id) DO NOTHING; -- Prevent errors if the record already exists
+  
+  RETURN NEW;
+END;
+$function$
+","","trigger"
+"public","handle_new_word_notification","plpgsql","CREATE OR REPLACE FUNCTION public.handle_new_word_notification()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  user_record RECORD;
+BEGIN
+  -- Create notifications for all users who have enabled daily word notifications
+  FOR user_record IN
+    SELECT us.user_id
+    FROM public.user_settings us
+    WHERE us.daily_word_reminder = true
+  LOOP
+    PERFORM public.create_notification(
+      user_record.user_id,
+      'new_word',
+      'New Word of the Day',
+      'A new word is available for practice',
+      jsonb_build_object('word_id', NEW.id),
+      NEW.id,
+      NULL,
+      NULL
+    );
+  END LOOP;
+  
+  RETURN NEW;
+END;
+$function$
+","","trigger"
+"public","handle_updated_at","plpgsql","CREATE OR REPLACE FUNCTION public.handle_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$function$
+","","trigger"
+"public","insert_assessment","plpgsql","CREATE OR REPLACE FUNCTION public.insert_assessment(p_user_id uuid, p_created_at timestamp with time zone, p_level text, p_scores jsonb, p_feedback jsonb, p_details jsonb, p_strengths text[], p_improvements text[], p_summary text, p_is_anonymous boolean, p_share_id text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+declare
+  v_id uuid;
+begin
+  insert into level_test.assessments (
+    user_id,
+    created_at,
+    level,
+    scores,
+    feedback,
+    details,
+    strengths,
+    improvements,
+    summary,
+    is_anonymous,
+    share_id
+  ) values (
+    p_user_id,
+    p_created_at,
+    p_level,
+    p_scores,
+    p_feedback,
+    p_details,
+    p_strengths,
+    p_improvements,
+    p_summary,
+    p_is_anonymous,
+    p_share_id
+  )
+  returning id into v_id;
+  
+  return v_id;
+end;
+$function$
+","p_user_id uuid, p_created_at timestamp with time zone, p_level text, p_scores jsonb, p_feedback jsonb, p_details jsonb, p_strengths text[], p_improvements text[], p_summary text, p_is_anonymous boolean, p_share_id text","uuid"
+"public","insert_assessment_responses","plpgsql","CREATE OR REPLACE FUNCTION public.insert_assessment_responses(p_assessment_id text, p_responses jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+begin
+  insert into level_test.assessment_responses (
+    assessment_id,
+    question_text,
+    question_level,
+    answer_text,
+    duration,
+    created_at
+  )
+  select
+    p_assessment_id::uuid,
+    (response->>'question_text')::text,
+    (response->>'question_level')::text,
+    (response->>'answer_text')::text,
+    (response->>'duration')::int,
+    (response->>'created_at')::timestamptz
+  from jsonb_array_elements(p_responses) as response;
+end;
+$function$
+","p_assessment_id text, p_responses jsonb","void"
+"public","insert_group_member","plpgsql","CREATE OR REPLACE FUNCTION public.insert_group_member(p_group_id uuid, p_user_id uuid, p_joined_at timestamp with time zone)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+  INSERT INTO group_members (group_id, user_id, joined_at)
+  VALUES (p_group_id, p_user_id, p_joined_at);
+  
+  RETURN TRUE;
+EXCEPTION
+  WHEN OTHERS THEN
+    RAISE EXCEPTION 'Failed to insert group member: %', SQLERRM;
+END;
+$function$
+","p_group_id uuid, p_user_id uuid, p_joined_at timestamp with time zone","bool"
+"public","is_admin","sql","CREATE OR REPLACE FUNCTION public.is_admin(user_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+AS $function$
+    SELECT EXISTS (
+        SELECT 1
+        FROM public.users
+        WHERE id = user_id
+        AND role = 'admin'::user_role
+    );
+$function$
+","user_id uuid","bool"
+"public","rebuild_instructor_student_relationships","plpgsql","CREATE OR REPLACE FUNCTION public.rebuild_instructor_student_relationships()
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_group RECORD;
+    v_course_id UUID;
+    v_instructor_id UUID;
+    v_student_id UUID;
+BEGIN
+    -- Clear the instructor_students table first (optional)
+    -- DELETE FROM instructor_students;
+    
+    -- Loop through all groups
+    FOR v_group IN (SELECT id, course_id FROM course_groups) LOOP
+        v_course_id := v_group.course_id;
+        
+        -- For each instructor in the group
+        FOR v_instructor_id IN (
+            SELECT gm.user_id
+            FROM group_members gm
+            JOIN users u ON gm.user_id = u.id
+            WHERE gm.group_id = v_group.id
+            AND u.role = 'instructor'
+        ) LOOP
+            -- Add all students to this instructor
+            FOR v_student_id IN (
+                SELECT gm.user_id
+                FROM group_members gm
+                JOIN users u ON gm.user_id = u.id
+                WHERE gm.group_id = v_group.id
+                AND u.role = 'student'
+            ) LOOP
+                -- Skip if instructor and student are the same person
+                IF v_instructor_id <> v_student_id THEN
+                    INSERT INTO instructor_students
+                        (instructor_id, student_id, course_id)
+                    VALUES
+                        (v_instructor_id, v_student_id, v_course_id)
+                    ON CONFLICT (instructor_id, student_id, course_id) DO NOTHING;
+                END IF;
+            END LOOP;
+        END LOOP;
+    END LOOP;
+END;
+$function$
+","","void"
+"public","reorder_steps","plpgsql","CREATE OR REPLACE FUNCTION public.reorder_steps(p_day_id uuid, p_step_ids uuid[], p_start_number integer)
+ RETURNS void
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_step_id UUID;
+  v_counter INTEGER := p_start_number;
+  v_temp_number INTEGER;
+BEGIN
+  -- First pass: Assign temporary numbers (original * 1000) to avoid conflicts
+  v_temp_number := 1000;
+  FOR v_step_id IN SELECT UNNEST(p_step_ids) LOOP
+    UPDATE course_steps
+    SET step_number = v_temp_number
+    WHERE id = v_step_id
+    AND day_id = p_day_id;
+    
+    v_temp_number := v_temp_number + 1000;
+  END LOOP;
+
+  -- Second pass: Assign final sequential numbers
+  FOR v_step_id IN SELECT UNNEST(p_step_ids) LOOP
+    UPDATE course_steps
+    SET step_number = v_counter
+    WHERE id = v_step_id
+    AND day_id = p_day_id;
+    
+    v_counter := v_counter + 1;
+  END LOOP;
+END;
+$function$
+","p_day_id uuid, p_step_ids uuid[], p_start_number integer","void"
+"public","reset_words_if_all_shown","plpgsql","CREATE OR REPLACE FUNCTION public.reset_words_if_all_shown()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM business_words 
+        WHERE last_shown IS NULL
+    ) THEN
+        UPDATE business_words 
+        SET last_shown = NULL;
+    END IF;
+    RETURN NEW;
+END;
+$function$
+","","trigger"
+"public","set_week_year","plpgsql","CREATE OR REPLACE FUNCTION public.set_week_year()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  NEW.week_number := date_part('week', NEW.created_at)::int;
+  NEW.year := date_part('year', NEW.created_at)::int;
+  RETURN NEW;
+END;
+$function$
+","","trigger"
+"public","test_user_trigger","plpgsql","CREATE OR REPLACE FUNCTION public.test_user_trigger()
+ RETURNS text
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+    _test_email text := 'test_' || floor(random() * 1000000) || '@example.com';
+    _user_id uuid;
+BEGIN
+    -- Insert a test user into auth.users
+    INSERT INTO auth.users (
+        email,
+        raw_user_meta_data
+    ) VALUES (
+        _test_email,
+        jsonb_build_object('full_name', 'Test User')
+    )
+    RETURNING id INTO _user_id;
+    
+    -- Check if the user was created in public.users
+    IF EXISTS (SELECT 1 FROM public.users WHERE id = _user_id) THEN
+        RETURN 'Success: User created in both tables';
+    ELSE
+        RETURN 'Error: User not created in public.users';
+    END IF;
+EXCEPTION WHEN others THEN
+    RETURN 'Error: ' || SQLERRM;
+END;
+$function$
+","","text"
+"public","update_assessment_response_audio","plpgsql","CREATE OR REPLACE FUNCTION public.update_assessment_response_audio(p_assessment_id uuid, p_question_text text, p_audio_url text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+begin
+  update level_test.assessment_responses
+  set audio_url = p_audio_url
+  where assessment_id = p_assessment_id
+    and question_text = p_question_text;
+end;
+$function$
+","p_assessment_id uuid, p_question_text text, p_audio_url text","void"
+"public","update_course_progress","plpgsql","CREATE OR REPLACE FUNCTION public.update_course_progress(user_id_param uuid, course_id_param uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    total_steps integer;
+    completed_steps integer;
+    progress decimal(5,2);
+BEGIN
+    -- Calculate total steps in the course
+    total_steps := calculate_total_course_steps(course_id_param);
+    
+    -- Calculate completed steps for the user
+    completed_steps := calculate_completed_steps(user_id_param, course_id_param);
+    
+    -- Calculate progress percentage
+    IF total_steps > 0 THEN
+        progress := (completed_steps::decimal / total_steps::decimal) * 100;
+    ELSE
+        progress := 0;
+    END IF;
+
+    -- Upsert into course_progress with explicit variable names
+    INSERT INTO course_progress (
+        user_id, course_id, completed_steps, total_steps, progress_percentage, last_updated_at
+    )
+    VALUES (
+        user_id_param, course_id_param, completed_steps, total_steps, progress, NOW()
+    )
+    ON CONFLICT (user_id, course_id) 
+    DO UPDATE SET 
+        completed_steps = EXCLUDED.completed_steps,
+        total_steps = EXCLUDED.total_steps,
+        progress_percentage = EXCLUDED.progress_percentage,
+        last_updated_at = NOW();
+
+END;
+$function$
+","user_id_param uuid, course_id_param uuid","void"
+"public","update_progress_on_step_completion","plpgsql","CREATE OR REPLACE FUNCTION public.update_progress_on_step_completion()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    course_id uuid;
+BEGIN
+    -- Get course_id for the step
+    SELECT cw.course_id INTO course_id
+    FROM course_steps cs
+    JOIN course_days cd ON cs.day_id = cd.id
+    JOIN course_weeks cw ON cd.week_id = cw.id
+    WHERE cs.id = COALESCE(NEW.step_id, OLD.step_id);
+
+    -- Update progress
+    IF course_id IS NOT NULL THEN
+        PERFORM update_course_progress(
+            COALESCE(NEW.user_id, OLD.user_id),
+            course_id
+        );
+    END IF;
+
+    RETURN COALESCE(NEW, OLD);
+END;
+$function$
+","","trigger"
+"public","update_updated_at_column","plpgsql","CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$function$
+","","trigger"

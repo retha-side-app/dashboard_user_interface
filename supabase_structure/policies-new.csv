@@ -1,0 +1,255 @@
+﻿"schemaname","tablename","policyname","permissive","roles","cmd","qual","with_check"
+"public","course_days","Admins can delete course days","PERMISSIVE","{public}","DELETE","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","null"
+"public","course_days","Admins can manage course days","PERMISSIVE","{public}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","course_days","Allow public read access to course days","PERMISSIVE","{public}","SELECT","true","null"
+"public","course_days","Anyone can access demo course days","PERMISSIVE","{public}","SELECT","(EXISTS ( SELECT 1
+   FROM (course_weeks cw
+     JOIN courses c ON ((cw.course_id = c.id)))
+  WHERE ((cw.id = course_days.week_id) AND (c.is_demo = true))))","null"
+"public","course_days","Enrolled students can view course days","PERMISSIVE","{authenticated}","SELECT","((EXISTS ( SELECT 1
+   FROM (course_enrollments ce
+     JOIN course_weeks cw ON ((ce.course_id = cw.course_id)))
+  WHERE ((cw.id = course_days.week_id) AND (ce.user_id = auth.uid()) AND (ce.status = 'active'::text)))) OR (EXISTS ( SELECT 1
+   FROM (course_weeks cw
+     JOIN courses c ON ((cw.course_id = c.id)))
+  WHERE ((cw.id = course_days.week_id) AND (c.created_by = auth.uid())))) OR (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role)))))","null"
+"public","course_enrollments","Admins can manage enrollments","PERMISSIVE","{authenticated}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","course_enrollments","Users can view their own enrollments","PERMISSIVE","{authenticated}","SELECT","((user_id = auth.uid()) OR (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role)))))","null"
+"public","course_groups","Admins can manage course groups","PERMISSIVE","{public}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","course_groups","Allow admins to manage course groups","PERMISSIVE","{authenticated}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","course_groups","Allow viewing course groups","PERMISSIVE","{authenticated}","SELECT","true","null"
+"public","course_groups","View course groups","PERMISSIVE","{authenticated}","SELECT","true","null"
+"public","course_media","Admins can manage course media","PERMISSIVE","{public}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","course_media","Authenticated users can view course media","PERMISSIVE","{authenticated}","SELECT","true","null"
+"public","course_progress","Instructors can view their students progress","PERMISSIVE","{authenticated}","SELECT","((EXISTS ( SELECT 1
+   FROM instructor_students
+  WHERE ((instructor_students.instructor_id = auth.uid()) AND (instructor_students.student_id = course_progress.user_id)))) OR (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role)))))","null"
+"public","course_progress","Progress is updated automatically","PERMISSIVE","{authenticated}","INSERT","null","(user_id = auth.uid())"
+"public","course_progress","Progress is updated automatically for updates","PERMISSIVE","{authenticated}","UPDATE","(user_id = auth.uid())","(user_id = auth.uid())"
+"public","course_progress","Users can view their own progress","PERMISSIVE","{authenticated}","SELECT","(user_id = auth.uid())","null"
+"public","course_steps","Admins can delete course steps","PERMISSIVE","{public}","DELETE","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","null"
+"public","course_steps","Admins can manage course steps","PERMISSIVE","{public}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","course_steps","Allow public read access to course steps","PERMISSIVE","{public}","SELECT","true","null"
+"public","course_steps","Anyone can access demo course steps","PERMISSIVE","{public}","SELECT","(EXISTS ( SELECT 1
+   FROM ((course_days cd
+     JOIN course_weeks cw ON ((cd.week_id = cw.id)))
+     JOIN courses c ON ((cw.course_id = c.id)))
+  WHERE ((cd.id = course_steps.day_id) AND (c.is_demo = true))))","null"
+"public","course_steps","Enrolled students can view course steps","PERMISSIVE","{authenticated}","SELECT","((EXISTS ( SELECT 1
+   FROM ((course_enrollments ce
+     JOIN course_weeks cw ON ((ce.course_id = cw.course_id)))
+     JOIN course_days cd ON ((cw.id = cd.week_id)))
+  WHERE ((cd.id = course_steps.day_id) AND (ce.user_id = auth.uid()) AND (ce.status = 'active'::text)))) OR (EXISTS ( SELECT 1
+   FROM ((course_days cd
+     JOIN course_weeks cw ON ((cd.week_id = cw.id)))
+     JOIN courses c ON ((cw.course_id = c.id)))
+  WHERE ((cd.id = course_steps.day_id) AND (c.created_by = auth.uid())))) OR (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role)))))","null"
+"public","course_weeks","Admins can delete course weeks","PERMISSIVE","{public}","DELETE","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","null"
+"public","course_weeks","Admins can manage course weeks","PERMISSIVE","{public}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","course_weeks","Allow public read access to course weeks","PERMISSIVE","{public}","SELECT","true","null"
+"public","course_weeks","Anyone can access demo course weeks","PERMISSIVE","{public}","SELECT","(EXISTS ( SELECT 1
+   FROM courses c
+  WHERE ((c.id = course_weeks.course_id) AND (c.is_demo = true))))","null"
+"public","course_weeks","Enrolled students can view course content","PERMISSIVE","{authenticated}","SELECT","((EXISTS ( SELECT 1
+   FROM course_enrollments
+  WHERE ((course_enrollments.course_id = course_weeks.course_id) AND (course_enrollments.user_id = auth.uid()) AND (course_enrollments.status = 'active'::text)))) OR (EXISTS ( SELECT 1
+   FROM courses
+  WHERE ((courses.id = course_weeks.course_id) AND (courses.created_by = auth.uid())))) OR (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role)))))","null"
+"public","courses","Admins can delete all courses","PERMISSIVE","{public}","DELETE","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","null"
+"public","courses","Admins can update all courses","PERMISSIVE","{public}","UPDATE","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","courses","Admins can view all courses","PERMISSIVE","{public}","SELECT","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","null"
+"public","courses","Allow public read access to courses","PERMISSIVE","{public}","SELECT","true","null"
+"public","courses","Anyone can view published courses","PERMISSIVE","{public}","SELECT","((is_published = true) OR (created_by = auth.uid()))","null"
+"public","courses","Course creators can update their courses","PERMISSIVE","{public}","UPDATE","(created_by = auth.uid())","(created_by = auth.uid())"
+"public","courses","Instructors and admins can create courses","PERMISSIVE","{public}","INSERT","null","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = ANY (ARRAY['instructor'::user_role, 'admin'::user_role])))))"
+"public","courses","everyone can read","PERMISSIVE","{public}","SELECT","true","null"
+"public","flashcards","Admins can manage flashcards","PERMISSIVE","{public}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","flashcards","Anyone can view flashcards","PERMISSIVE","{authenticated}","SELECT","true","null"
+"public","group_members","admin_manage_group_members","PERMISSIVE","{authenticated}","ALL","true","true"
+"public","group_members","members_view_own_memberships","PERMISSIVE","{authenticated}","SELECT","(user_id = auth.uid())","null"
+"public","group_messages","Admins can manage group messages","PERMISSIVE","{public}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","group_messages","Group members can send messages to their groups","PERMISSIVE","{authenticated}","INSERT","null","((sender_id = auth.uid()) AND (EXISTS ( SELECT 1
+   FROM group_members
+  WHERE ((group_members.group_id = group_messages.group_id) AND (group_members.user_id = auth.uid())))))"
+"public","group_messages","Manage own messages","PERMISSIVE","{authenticated}","ALL","((sender_id = auth.uid()) OR ((auth.jwt() ->> 'role'::text) = 'admin'::text))","((sender_id = auth.uid()) OR ((auth.jwt() ->> 'role'::text) = 'admin'::text))"
+"public","group_messages","Send group messages","PERMISSIVE","{authenticated}","INSERT","null","((sender_id = auth.uid()) AND (EXISTS ( SELECT 1
+   FROM group_members
+  WHERE ((group_members.group_id = group_messages.group_id) AND (group_members.user_id = auth.uid())))))"
+"public","group_messages","Users can delete their own messages","PERMISSIVE","{authenticated}","DELETE","(sender_id = auth.uid())","null"
+"public","group_messages","Users can update their own messages","PERMISSIVE","{authenticated}","UPDATE","(sender_id = auth.uid())","(sender_id = auth.uid())"
+"public","group_messages","View group messages","PERMISSIVE","{authenticated}","SELECT","true","null"
+"public","group_messages","allow_read_group_messages","PERMISSIVE","{authenticated}","SELECT","true","null"
+"public","instructor_groups","admin_manage_instructor_groups","PERMISSIVE","{authenticated}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","instructor_groups","read_instructor_groups","PERMISSIVE","{authenticated}","SELECT","true","null"
+"public","instructor_students","Admins can manage instructor-student relationships","PERMISSIVE","{authenticated}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","instructor_students","Instructors can view all instructor students","PERMISSIVE","{authenticated}","SELECT","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'instructor'::user_role))))","null"
+"public","instructor_students","Instructors can view their students","PERMISSIVE","{authenticated}","SELECT","((instructor_id = auth.uid()) OR (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role)))))","null"
+"public","instructor_students","Students can view their instructors","PERMISSIVE","{authenticated}","SELECT","((student_id = auth.uid()) OR (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role)))))","null"
+"public","matching_game_words","Admins can manage matching game words","PERMISSIVE","{public}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","matching_game_words","Anyone can view matching game words","PERMISSIVE","{authenticated}","SELECT","true","null"
+"public","media_files","Admins can manage media files","PERMISSIVE","{public}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","media_files","Authenticated users can view media files","PERMISSIVE","{authenticated}","SELECT","true","null"
+"public","notifications","Users can update their own notifications","PERMISSIVE","{authenticated}","UPDATE","(auth.uid() = user_id)","(auth.uid() = user_id)"
+"public","notifications","Users can view their own notifications","PERMISSIVE","{authenticated}","SELECT","(auth.uid() = user_id)","null"
+"public","profiles","Allow admins to view all profiles","PERMISSIVE","{authenticated}","SELECT","((auth.jwt() ->> 'role'::text) = 'admin'::text)","null"
+"public","profiles","Allow public read access","PERMISSIVE","{public}","SELECT","true","null"
+"public","profiles","Allow users to update their own profile","PERMISSIVE","{authenticated}","UPDATE","(auth.uid() = id)","(auth.uid() = id)"
+"public","profiles","Allow users to update their own profiles","PERMISSIVE","{authenticated}","UPDATE","(auth.uid() = id)","(auth.uid() = id)"
+"public","profiles","Allow users to view their own profiles","PERMISSIVE","{authenticated}","SELECT","(auth.uid() = id)","null"
+"public","quiz_answers","Admins can delete quiz answers","PERMISSIVE","{public}","DELETE","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","null"
+"public","quiz_answers","Admins can manage quiz answers","PERMISSIVE","{public}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","quiz_answers","everyone can see","PERMISSIVE","{public}","SELECT","true","null"
+"public","quiz_questions","Admins can delete quiz questions","PERMISSIVE","{public}","DELETE","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","null"
+"public","quiz_questions","Admins can manage quiz questions","PERMISSIVE","{public}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","quiz_questions","Everyone can see","PERMISSIVE","{public}","SELECT","true","null"
+"public","quizzes","Admins can delete quizzes","PERMISSIVE","{public}","DELETE","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","null"
+"public","quizzes","Admins can manage quizzes","PERMISSIVE","{public}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","quizzes","Allow quizzes to be seen","PERMISSIVE","{public}","SELECT","true","null"
+"public","step_completions","Instructors can view their students completions","PERMISSIVE","{authenticated}","SELECT","((EXISTS ( SELECT 1
+   FROM instructor_students
+  WHERE ((instructor_students.instructor_id = auth.uid()) AND (instructor_students.student_id = step_completions.user_id)))) OR (EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role)))))","null"
+"public","step_completions","Users can delete their own completions","PERMISSIVE","{authenticated}","DELETE","(user_id = auth.uid())","null"
+"public","step_completions","Users can insert their own completion","PERMISSIVE","{authenticated}","INSERT","null","(user_id = auth.uid())"
+"public","step_completions","Users can insert their own completions","PERMISSIVE","{authenticated}","INSERT","null","(user_id = auth.uid())"
+"public","step_completions","Users can view their own completions","PERMISSIVE","{authenticated}","SELECT","(user_id = auth.uid())","null"
+"public","user_media","Users can delete their own media","PERMISSIVE","{authenticated}","DELETE","(user_id = auth.uid())","null"
+"public","user_media","Users can insert their own media","PERMISSIVE","{authenticated}","INSERT","null","(user_id = auth.uid())"
+"public","user_media","Users can update their own media","PERMISSIVE","{authenticated}","UPDATE","(user_id = auth.uid())","(user_id = auth.uid())"
+"public","user_media","Users can view their own media","PERMISSIVE","{authenticated}","SELECT","(user_id = auth.uid())","null"
+"public","user_notes","Admins can manage all notes","PERMISSIVE","{authenticated}","ALL","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))","(EXISTS ( SELECT 1
+   FROM users
+  WHERE ((users.id = auth.uid()) AND (users.role = 'admin'::user_role))))"
+"public","user_notes","Users can create their own notes","PERMISSIVE","{authenticated}","INSERT","null","((user_id = auth.uid()) AND (EXISTS ( SELECT 1
+   FROM (((course_enrollments ce
+     JOIN course_weeks cw ON ((ce.course_id = cw.course_id)))
+     JOIN course_days cd ON ((cw.id = cd.week_id)))
+     JOIN course_steps cs ON ((cd.id = cs.day_id)))
+  WHERE ((cs.id = user_notes.step_id) AND (ce.user_id = auth.uid()) AND (ce.status = 'active'::text)))))"
+"public","user_notes","Users can delete their own notes","PERMISSIVE","{authenticated}","DELETE","(user_id = auth.uid())","null"
+"public","user_notes","Users can update their own notes","PERMISSIVE","{authenticated}","UPDATE","(user_id = auth.uid())","(user_id = auth.uid())"
+"public","user_notes","Users can view their own notes","PERMISSIVE","{authenticated}","SELECT","(user_id = auth.uid())","null"
+"public","users","Admins can insert and delete","PERMISSIVE","{authenticated}","ALL","is_admin(auth.uid())","null"
+"public","users","Allow admins to create new users","PERMISSIVE","{authenticated}","INSERT","null","((auth.jwt() ->> 'role'::text) = 'admin'::text)"
+"public","users","Allow admins to delete any user","PERMISSIVE","{authenticated}","DELETE","((auth.jwt() ->> 'role'::text) = 'admin'::text)","null"
+"public","users","Allow admins to list all users","PERMISSIVE","{authenticated}","SELECT","((auth.jwt() ->> 'role'::text) = 'admin'::text)","null"
+"public","users","Allow admins to update any user","PERMISSIVE","{authenticated}","UPDATE","((auth.jwt() ->> 'role'::text) = 'admin'::text)","((auth.jwt() ->> 'role'::text) = 'admin'::text)"
+"public","users","Allow public access to shared assessment user info","PERMISSIVE","{anon}","SELECT","(EXISTS ( SELECT 1
+   FROM level_test.assessments a
+  WHERE ((a.user_id = users.id) AND (a.share_id IS NOT NULL))))","null"
+"public","users","Allow reading user info for shared assessments","PERMISSIVE","{public}","SELECT","(EXISTS ( SELECT 1
+   FROM level_test.assessments a
+  WHERE ((a.user_id = users.id) AND (a.share_id IS NOT NULL))))","null"
+"public","users","Users can read own data","PERMISSIVE","{authenticated}","SELECT","((id = auth.uid()) OR is_admin(auth.uid()) OR (EXISTS ( SELECT 1
+   FROM level_test.assessments a
+  WHERE ((a.user_id = users.id) AND (a.share_id IS NOT NULL)))))","null"
+"public","users","Users can update own data","PERMISSIVE","{authenticated}","UPDATE","((id = auth.uid()) OR is_admin(auth.uid()))","null"
+"public","users","allow_read_users","PERMISSIVE","{authenticated}","SELECT","true","null"
+"public","users","trigger_insert_policy","PERMISSIVE","{public}","INSERT","null","true"
+"public","users","users_insert_policy","PERMISSIVE","{public}","INSERT","null","(auth.uid() = id)"
+"public","users","users_policy","PERMISSIVE","{public}","ALL","(auth.uid() = id)","(auth.uid() = id)"
