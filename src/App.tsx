@@ -114,56 +114,27 @@ function App() {
   };
 
   useEffect(() => {
-    // Set a timeout to prevent infinite loading
-    const authTimeout = setTimeout(() => {
-      if (loading) {
+    // Get initial session
+    const initializeAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user ?? null);
+      } catch (error) {
+        console.error("Error initializing auth:", error);
+      } finally {
         setLoading(false);
         setAuthInitialized(true);
-        setAuthError(new Error("Authentication timed out. Please refresh the page."));
-      }
-    }, 20000); // 20 second timeout instead of 10
-    
-    // Initialize auth with retry logic
-    let retryCount = 0;
-    const maxRetries = 3;
-    
-    const tryInitAuth = async () => {
-      try {
-        await initializeAuth();
-      } catch (error) {
-        console.error(`Auth initialization failed (attempt ${retryCount + 1}/${maxRetries})`, error);
-        if (retryCount < maxRetries) {
-          retryCount++;
-          // Exponential backoff: 1s, 2s, 4s
-          setTimeout(tryInitAuth, 1000 * Math.pow(2, retryCount - 1));
-        } else {
-          setLoading(false);
-          setAuthInitialized(true);
-          setAuthError(new Error("Authentication failed after multiple attempts. Please refresh the page."));
-        }
       }
     };
-    
-    tryInitAuth();
+
+    initializeAuth();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      try {
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          const role = await getUserRole(session.user.id);
-          setUserRole(role);
-        } else {
-          setUserRole(null);
-        }
-      } catch (error) {
-        console.error("Error in auth state change:", error);
-      }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
     });
 
     return () => {
-      clearTimeout(authTimeout);
       subscription.unsubscribe();
     };
   }, []);
